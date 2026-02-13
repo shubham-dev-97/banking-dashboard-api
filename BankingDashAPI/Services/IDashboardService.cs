@@ -8,5 +8,7 @@ namespace BankingDashAPI.Services
         Task<List<LoanAnalysis>> GetLoanAnalysisAsync();
         Task<List<DepositAnalysis>> GetDepositAnalysisAsync();
         Task<FinancialSummary> GetSummaryAsync();
+
+        
     }
 }

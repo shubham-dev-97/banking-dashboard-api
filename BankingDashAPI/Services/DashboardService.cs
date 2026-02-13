@@ -1,84 +1,127 @@
-﻿using BankingDashAPI.Models;
+﻿using BankingDashAPI.Data;
+using BankingDashAPI.Models;
+using Microsoft.EntityFrameworkCore;
+using BankingDashAPI.Models.Entities;
 
 namespace BankingDashAPI.Services
 {
     public class DashboardService : IDashboardService
     {
+        private readonly AppDbContext _context;
+
+        public DashboardService(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        // MAIN DASHBOARD
+     
         public async Task<DashboardData> GetDashboardDataAsync()
         {
-            // Mock data - in real app, this would come from database
-            return await Task.FromResult(new DashboardData
+            return new DashboardData
             {
-                FinancialSummary = GetFinancialSummary(),
-                LoanAnalyses = GetLoanAnalysisData(),
-                DepositAnalyses = GetDepositAnalysisData(),
-                MonthlyTransactions = GetMonthlyTransactions()
-            });
+                FinancialSummary = await GetSummaryAsync(),
+                LoanAnalyses = await GetLoanAnalysisAsync(),
+                DepositAnalyses = await GetDepositAnalysisAsync(),
+                MonthlyTransactions = await GetMonthlyTransactionsAsync()
+            };
         }
 
+       
+        // LOANS
+      
         public async Task<List<LoanAnalysis>> GetLoanAnalysisAsync()
         {
-            return await Task.FromResult(GetLoanAnalysisData());
+            return await _context.Loans
+                .Select(x => new LoanAnalysis
+                {
+                    LoanType = x.LoanType,
+                    Amount = x.Amount,
+                    InterestRate = x.InterestRate,
+                    Outstanding = x.Outstanding,
+                    Status = x.Status
+                })
+                .ToListAsync();
         }
 
+        
+        // DEPOSITS
+        
         public async Task<List<DepositAnalysis>> GetDepositAnalysisAsync()
         {
-            return await Task.FromResult(GetDepositAnalysisData());
-        }
+            
 
+            return await _context.Deposits
+          .GroupBy(x => x.AccountType)
+           .Select(g => new DepositAnalysis
+         {
+            AccountType = g.Key,
+            Balance = g.Sum(x => x.Balance),
+            InterestRate = g.Average(x => x.InterestRate)
+          })
+            .ToListAsync();
+          }
+
+        // FINANCIAL SUMMARY
+     
         public async Task<FinancialSummary> GetSummaryAsync()
         {
-            return await Task.FromResult(GetFinancialSummary());
-        }
+            var totalLoans = await _context.Loans.SumAsync(x => x.Outstanding);
+            var totalDeposits = await _context.Deposits.SumAsync(x => x.Balance);
 
-        private FinancialSummary GetFinancialSummary()
-        {
             return new FinancialSummary
             {
-                TotalAssets = 12500000,
-                TotalLiabilities = 4500000,
-                NetWorth = 8000000,
-                TotalLoans = 3200000,
-                TotalDeposits = 8500000,
-                MonthlyRevenue = 450000,
-                ProfitMargin = 28.5m
+                TotalAssets = totalDeposits,
+                TotalLiabilities = totalLoans,
+                NetWorth = totalDeposits - totalLoans,
+                TotalLoans = totalLoans,
+                TotalDeposits = totalDeposits,
+                MonthlyRevenue = 0,
+                ProfitMargin = 0
             };
         }
 
-        private List<LoanAnalysis> GetLoanAnalysisData()
+        // MONTHLY TRANSACTIONS
+
+        //private async Task<List<MonthlyTransaction>> GetMonthlyTransactionsAsync()
+        //{
+        //    return await _context.Transactions
+        //        .GroupBy(t => t.Date.Month)
+        //        .Select(g => new MonthlyTransaction
+        //        {
+        //            Month = new DateTime(1, g.Key, 1).ToString("MMM"),
+
+        //            Deposits = g.Where(x => x.Type == "Deposit").Sum(x => x.Amount),
+        //            Withdrawals = g.Where(x => x.Type == "Withdrawal").Sum(x => x.Amount),
+        //            Transfers = g.Where(x => x.Type == "Transfer").Sum(x => x.Amount)
+        //        })
+        //        .OrderBy(x => x.Month)
+        //        .ToListAsync();
+        //}
+
+
+        private async Task<List<MonthlyTransaction>> GetMonthlyTransactionsAsync()
         {
-            return new List<LoanAnalysis>
+            var data = await _context.Transactions
+                .GroupBy(t => t.Date.Month)
+                .Select(g => new
+                {
+                    MonthNumber = g.Key,
+                    Deposits = g.Where(x => x.Type == "Deposit").Sum(x => x.Amount),
+                    Withdrawals = g.Where(x => x.Type == "Withdrawal").Sum(x => x.Amount),
+                    Transfers = g.Where(x => x.Type == "Transfer").Sum(x => x.Amount)
+                })
+                .ToListAsync(); // EXECUTE SQL FIRST
+
+            //  Convert in memory 
+            return data.Select(x => new MonthlyTransaction
             {
-                new LoanAnalysis { LoanType = "Home Loan", Amount = 500000, InterestRate = 4.5m, Outstanding = 450000, Status = "Active", Month = 1 },
-                new LoanAnalysis { LoanType = "Personal Loan", Amount = 50000, InterestRate = 8.5m, Outstanding = 25000, Status = "Active", Month = 2 },
-                new LoanAnalysis { LoanType = "Business Loan", Amount = 200000, InterestRate = 6.2m, Outstanding = 150000, Status = "Active", Month = 3 },
-                new LoanAnalysis { LoanType = "Auto Loan", Amount = 30000, InterestRate = 5.8m, Outstanding = 10000, Status = "Active", Month = 4 },
-                new LoanAnalysis { LoanType = "Education Loan", Amount = 40000, InterestRate = 4.0m, Outstanding = 30000, Status = "Active", Month = 5 }
-            };
+                Month = new DateTime(1, x.MonthNumber, 1).ToString("MMM"),
+                Deposits = x.Deposits,
+                Withdrawals = x.Withdrawals,
+                Transfers = x.Transfers
+            }).ToList();
         }
 
-        private List<DepositAnalysis> GetDepositAnalysisData()
-        {
-            return new List<DepositAnalysis>
-            {
-                new DepositAnalysis { AccountType = "Savings", Balance = 250000, InterestRate = 2.5m, MonthlyGrowth = 2.1m, Month = 1 },
-                new DepositAnalysis { AccountType = "Current", Balance = 500000, InterestRate = 1.5m, MonthlyGrowth = 1.2m, Month = 2 },
-                new DepositAnalysis { AccountType = "Fixed Deposit", Balance = 750000, InterestRate = 5.5m, MonthlyGrowth = 0.8m, Month = 3 },
-                new DepositAnalysis { AccountType = "Recurring Deposit", Balance = 100000, InterestRate = 4.2m, MonthlyGrowth = 1.5m, Month = 4 },
-                new DepositAnalysis { AccountType = "Corporate", Balance = 2000000, InterestRate = 3.2m, MonthlyGrowth = 3.1m, Month = 5 }
-            };
-        }
-
-        private List<MonthlyTransaction> GetMonthlyTransactions()
-        {
-            return new List<MonthlyTransaction>
-            {
-                new MonthlyTransaction { Month = "Jan", Deposits = 1200000, Withdrawals = 800000, Transfers = 400000 },
-                new MonthlyTransaction { Month = "Feb", Deposits = 1400000, Withdrawals = 900000, Transfers = 500000 },
-                new MonthlyTransaction { Month = "Mar", Deposits = 1600000, Withdrawals = 1000000, Transfers = 600000 },
-                new MonthlyTransaction { Month = "Apr", Deposits = 1800000, Withdrawals = 1100000, Transfers = 700000 },
-                new MonthlyTransaction { Month = "May", Deposits = 2000000, Withdrawals = 1200000, Transfers = 800000 }
-            };
-        }
     }
 }

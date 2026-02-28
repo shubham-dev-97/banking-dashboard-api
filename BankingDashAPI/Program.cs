@@ -1,49 +1,55 @@
 using BankingDashAPI.Data;
 using BankingDashAPI.Services;
+using BankingDashAPI.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// DATABASE
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// SERVICES
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// CONTROLLERS
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+
+// SWAGGER
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-//For the Database
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-
-builder.Services.AddScoped<IDashboardService, DashboardService>();
-
+// CORS - CORRECTED VERSION
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowReactApp", policy =>
-    {
-        policy.WithOrigins("http://localhost:3000")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
+    options.AddPolicy("AllowReact",
+        policy =>
+        {
+            policy.WithOrigins("http://localhost:3000")  // Your React app URL
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+            // Removed .AllowAnyOrigin() as it conflicts with WithOrigins
+        });
 });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// PIPELINE
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Disable HTTPS redirect for development
+// app.UseHttpsRedirection();
 
-app.UseCors("AllowReactApp");
+// IMPORTANT: CORS must be called before Authorization
+app.UseCors("AllowReact");
 
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
-
